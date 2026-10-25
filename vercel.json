@@ -1,0 +1,44 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "redirects": [
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "theimpart.com"
+        }
+      ],
+      "destination": "https://www.theimpart.com/:path*",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/robots.txt",
+      "destination": "/robots.txt"
+    },
+    {
+      "source": "/api/auth/:path*",
+      "destination": "/api/auth"
+    },
+    {
+      "source": "/api/articles/:path*",
+      "destination": "/api/articles"
+    },
+    {
+      "source": "/api/settings/:path*",
+      "destination": "/api/settings"
+    },
+    {
+      "source": "/article/:id",
+      "destination": "/api/article-meta?id=:id"
+    },
+    {
+      "source": "/((?!api/|uploads/|robots\\.txt).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

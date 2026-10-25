@@ -1,0 +1,101 @@
+{
+  "config": {
+    "thresholdSeconds": 2
+  },
+  "records": [
+    {
+      "articleId": "1792589447296",
+      "date": "2026-10-21",
+      "views": 15,
+      "durationSeconds": 990
+    },
+    {
+      "articleId": "1792591004218",
+      "date": "2026-10-21",
+      "views": 1,
+      "durationSeconds": 675
+    },
+    {
+      "articleId": "1792602023813",
+      "date": "2026-10-21",
+      "views": 2,
+      "durationSeconds": 38
+    },
+    {
+      "articleId": "1792602023813",
+      "date": "2026-10-23",
+      "views": 9,
+      "durationSeconds": 542
+    },
+    {
+      "articleId": "1792589447296",
+      "date": "2026-10-23",
+      "views": 7,
+      "durationSeconds": 143
+    },
+    {
+      "articleId": "1792793653820",
+      "date": "2026-10-24",
+      "views": 4,
+      "durationSeconds": 86
+    },
+    {
+      "articleId": "1792602023813",
+      "date": "2026-10-24",
+      "views": 1,
+      "durationSeconds": 54
+    },
+    {
+      "articleId": "1792589447296",
+      "date": "2026-10-24",
+      "views": 3,
+      "durationSeconds": 94
+    },
+    {
+      "articleId": "1792791226628",
+      "date": "2026-10-24",
+      "views": 7,
+      "durationSeconds": 1126
+    },
+    {
+      "articleId": "1792791226628",
+      "date": "2026-10-25",
+      "views": 0,
+      "durationSeconds": 10
+    },
+    {
+      "articleId": "1792589447296",
+      "date": "2026-10-25",
+      "views": 0,
+      "durationSeconds": 1
+    },
+    {
+      "articleId": "1792793653820",
+      "date": "2026-10-25",
+      "views": 1,
+      "durationSeconds": 27
+    }
+  ],
+  "totals": {
+    "1792589447296": {
+      "views": 25,
+      "durationSeconds": 1228
+    },
+    "1792591004218": {
+      "views": 1,
+      "durationSeconds": 675
+    },
+    "1792602023813": {
+      "views": 12,
+      "durationSeconds": 634
+    },
+    "1792793653820": {
+      "views": 5,
+      "durationSeconds": 113
+    },
+    "1792791226628": {
+      "views": 7,
+      "durationSeconds": 1136
+    }
+  }
+}

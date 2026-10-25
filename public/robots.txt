@@ -1,0 +1,18 @@
+# https://www.theimpart.com/robots.txt
+# Конфігурація індексації для пошукових систем видання The Impart
+
+User-agent: *
+Allow: /
+
+# Заборона індексації адміністративних та службових розділів
+Disallow: /admin
+Disallow: /admin/
+Disallow: /editor
+Disallow: /editor/
+Disallow: /login
+Disallow: /login/
+Disallow: /api/
+
+# Карти сайту (Sitemap)
+Sitemap: https://www.theimpart.com/sitemap.xml
+Sitemap: https://www.theimpart.com/news-sitemap.xml
