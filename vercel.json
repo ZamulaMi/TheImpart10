@@ -29,6 +29,14 @@
       "destination": "/api/sitemap?part=:part"
     },
     {
+      "source": "/news-sitemap.xml",
+      "destination": "/api/news-sitemap"
+    },
+    {
+      "source": "/news-sitemap-:lang.xml",
+      "destination": "/api/news-sitemap?lang=:lang"
+    },
+    {
       "source": "/api/auth/:path*",
       "destination": "/api/auth"
     },
@@ -45,7 +53,7 @@
       "destination": "/api/article-meta?id=:id"
     },
     {
-      "source": "/((?!api/|uploads/|robots\\.txt|sitemap\\.xml|sitemap-[0-9]+\\.xml).*)",
+      "source": "/((?!api/|uploads/|robots\\.txt|sitemap\\.xml|sitemap-[0-9]+\\.xml|news-sitemap\\.xml|news-sitemap-[a-zA-Z-]+\\.xml).*)",
       "destination": "/index.html"
     }
   ]

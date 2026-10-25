@@ -74,12 +74,30 @@
       "date": "2026-10-25",
       "views": 3,
       "durationSeconds": 48
+    },
+    {
+      "articleId": "1792791226628",
+      "date": "2026-10-26",
+      "views": 0,
+      "durationSeconds": 13
+    },
+    {
+      "articleId": "1792793653820",
+      "date": "2026-10-26",
+      "views": 0,
+      "durationSeconds": 4
+    },
+    {
+      "articleId": "1792589447296",
+      "date": "2026-10-26",
+      "views": 1,
+      "durationSeconds": 5
     }
   ],
   "totals": {
     "1792589447296": {
-      "views": 26,
-      "durationSeconds": 1231
+      "views": 27,
+      "durationSeconds": 1236
     },
     "1792591004218": {
       "views": 1,
@@ -91,11 +109,11 @@
     },
     "1792793653820": {
       "views": 7,
-      "durationSeconds": 134
+      "durationSeconds": 138
     },
     "1792791226628": {
       "views": 10,
-      "durationSeconds": 1150
+      "durationSeconds": 1163
     }
   }
 }

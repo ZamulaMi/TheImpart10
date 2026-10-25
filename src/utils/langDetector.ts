@@ -127,13 +127,34 @@ export function isPostSovietTimezone(): boolean {
 }
 
 /**
+ * Перевіряє явний мовний параметр у URL (?lang=en або ?lang=uk / ?lang=ua),
+ * щоб канонічні двомовні посилання відкривалися відповідною мовою.
+ */
+export function getUrlRequestedSiteLanguage(): SiteLanguage | null {
+  if (typeof window === 'undefined' || !window.location?.search) return null;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('lang')?.trim().toLowerCase();
+    if (raw === 'en') return 'en';
+    if (raw === 'uk' || raw === 'ua') return 'ua';
+  } catch {}
+  return null;
+}
+
+/**
  * Синхронне визначення початкової мови при першому завантаженні сторінки:
+ * - Якщо в URL явно передано ?lang=en або ?lang=uk|ua — повертає вказану мову.
  * - Якщо збережено вибір у localStorage — повертає його.
  * - Якщо мова браузера українська чи російська — повертає 'ua'.
  * - Якщо часовий пояс належить країні колишнього СРСР — повертає 'ua'.
  * - У всіх інших випадках (інша країна та інша мова) — повертає 'en'.
  */
 export function getInitialSiteLanguage(): SiteLanguage {
+  const urlLang = getUrlRequestedSiteLanguage();
+  if (urlLang) {
+    return urlLang;
+  }
+
   if (typeof window !== 'undefined') {
     try {
       const saved = localStorage.getItem(LANG_STORAGE_KEY);
@@ -168,6 +189,9 @@ export async function refineInitialLanguageViaGeo(
   if (typeof window === 'undefined') return;
 
   try {
+    // Якщо мова явно задана у параметрі URL (?lang=...) — не перезаписуємо її геолокацією
+    if (getUrlRequestedSiteLanguage()) return;
+
     // Якщо користувач уже має збережений вибір — не змінюємо
     const saved = localStorage.getItem(LANG_STORAGE_KEY);
     if (saved === 'en' || saved === 'ua') return;

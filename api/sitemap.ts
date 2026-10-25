@@ -185,14 +185,12 @@ function readJsonFileStrict<T>(candidatePaths: string[], entityLabel: string): T
 }
 
 /**
- * Серверний адаптер читання актуальних публічних даних для генерації sitemap.xml.
- * Не маскує збої БД під порожній список статей.
+ * Серверний адаптер суворого читання статей з PostgreSQL (або локального сховища, якщо БД не налаштована).
+ * При збої БД викидає SitemapDatabaseError замість маскування під порожній масив.
  */
-export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
+export async function fetchArticlesStrict(): Promise<Article[]> {
   const dataDir = path.resolve(process.cwd(), 'data');
   const articlesPaths = [path.join(dataDir, 'articles.json'), '/tmp/impart_articles.json'];
-  const categoriesPaths = ['/tmp/impart_categories.json', path.join(dataDir, 'categories.json')];
-  const pagesPaths = ['/tmp/impart_pages.json', path.join(dataDir, 'pages.json')];
 
   if (hasConfiguredDatabaseEnv()) {
     const sql = getNeonSql();
@@ -202,7 +200,6 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
       );
     }
 
-    let dbArticles: Article[] = [];
     try {
       const rows = await executeStrictSql<any[]>(sql, async (client) => {
         return await client`
@@ -231,7 +228,7 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
         `;
       });
 
-      dbArticles = (rows || []).map((r: any) => ({
+      return (rows || []).map((r: any) => ({
         id: String(r.id),
         title: String(r.title || ''),
         excerpt: String(r.excerpt || ''),
@@ -262,7 +259,34 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
       if (pgCode !== '42P01') {
         throw err;
       }
-      dbArticles = [];
+      return [];
+    }
+  }
+
+  const localArticlesRaw = readJsonFileStrict<Article[]>(articlesPaths, 'articles');
+  if (localArticlesRaw !== null && !Array.isArray(localArticlesRaw)) {
+    throw new SitemapDatabaseError('Невалідна структура списку статей у сховищі');
+  }
+  return localArticlesRaw || [];
+}
+
+/**
+ * Серверний адаптер читання актуальних публічних даних для генерації sitemap.xml.
+ * Не маскує збої БД під порожній список статей.
+ */
+export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
+  const dataDir = path.resolve(process.cwd(), 'data');
+  const categoriesPaths = ['/tmp/impart_categories.json', path.join(dataDir, 'categories.json')];
+  const pagesPaths = ['/tmp/impart_pages.json', path.join(dataDir, 'pages.json')];
+
+  const articles = await fetchArticlesStrict();
+
+  if (hasConfiguredDatabaseEnv()) {
+    const sql = getNeonSql();
+    if (!sql) {
+      throw new SitemapDatabaseError(
+        'Змінна підключення до бази даних задана некоректно — неможливо ініціалізувати клієнт БД'
+      );
     }
 
     let categories: NavigationCategory[] = [...DEFAULT_NAV_CATEGORIES];
@@ -299,19 +323,13 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
     }
 
     return {
-      articles: dbArticles,
+      articles,
       categories,
       pagesUpdatedAt,
     };
   }
 
   // Режим локального серверного сховища (коли зовнішня СУБД не підключена у змінних середовища)
-  const localArticlesRaw = readJsonFileStrict<Article[]>(articlesPaths, 'articles');
-  if (localArticlesRaw !== null && !Array.isArray(localArticlesRaw)) {
-    throw new SitemapDatabaseError('Невалідна структура списку статей у сховищі');
-  }
-  const articles = localArticlesRaw || [];
-
   const localCategoriesRaw = readJsonFileStrict<NavigationCategory[]>(categoriesPaths, 'categories');
   const categories =
     Array.isArray(localCategoriesRaw) && localCategoriesRaw.length > 0

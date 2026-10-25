@@ -15,6 +15,7 @@ import statsHandler, { ensureStatsLoaded } from './api/stats';
 import { verifyEditorOrAdminToken } from './api/_auth_utils';
 import articleMetaHandler from './api/article-meta';
 import sitemapHandler from './api/sitemap';
+import newsSitemapHandler from './api/news-sitemap';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -81,6 +82,21 @@ app.all([/^\/sitemap(?:-(\d+))?\.xml$/i, '/api/sitemap'], async (req, res) => {
     await sitemapHandler(req, res);
   } catch (err) {
     console.error('Express /sitemap.xml error:', err);
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Retry-After', '120');
+      return res.status(503).send('Service Unavailable');
+    }
+  }
+});
+
+// Динамічна генерація news-sitemap.xml для Google News (останні 48 годин, лише опубліковані новини)
+app.all([/^\/news-sitemap(?:-([a-zA-Z-]+))?\.xml$/i, '/api/news-sitemap'], async (req, res) => {
+  try {
+    await newsSitemapHandler(req, res);
+  } catch (err) {
+    console.error('Express /news-sitemap.xml error:', err);
     if (!res.headersSent) {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');

@@ -47,9 +47,10 @@ const UKRAINIAN_MONTHS: Record<string, number> = {
 export function stripHtml(input?: string): string {
   if (!input) return '';
   return input
+    .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
+    .replace(/<(?:\/?[a-zA-Z!?][^>]*)>/g, ' ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]+)\]\((?:https?:\/\/|\/|mailto:|tel:)[^)]+\)/g, '$1')
     .replace(/\[\/?(?:hl|color|font|u)(?::[^\]]+)?\]/gi, '')
