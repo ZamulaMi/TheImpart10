@@ -304,6 +304,10 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
           <img
             src={article.coverImage}
             alt={title}
+            width={1200}
+            height={675}
+            fetchPriority="high"
+            decoding="async"
             className="w-full h-full object-cover"
           />
         </div>

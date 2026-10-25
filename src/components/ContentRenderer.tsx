@@ -576,7 +576,7 @@ export function parseContentToBlocks(content: string): ParsedBlock[] {
   return blocks;
 }
 
-// Очищення жорстко закодованих чорних інлайн-стилів та псевдо-заголовків для гармонійного вигляду в темній і світлій темах
+// Очищення жорстко закодованих чорних інлайн-стилів та оптимізація вбудованих зображень (lazy-loading, decoding)
 function cleanHtmlForTheme(raw: string): string {
   if (!raw) return '';
   return raw
@@ -586,11 +586,21 @@ function cleanHtmlForTheme(raw: string): string {
     )
     .replace(
       /style="([^"]*?)color:\s*(?:rgb\(\s*23\s*,\s*23\s*,\s*23\s*\)|#171717|#0a0a0a|#000000|#1f2937|#262626|black)\s*;?([^"]*?)"/gi,
-      (match, before, after) => {
+      (_match, before, after) => {
         const remaining = `${before}${after}`.trim().replace(/^;\s*/, '').replace(/;\s*;+/g, ';');
         return remaining ? `style="${remaining}"` : '';
       }
-    );
+    )
+    .replace(/<img\b([^>]*)>/gi, (_full, attrs: string) => {
+      let updated = attrs;
+      if (!/\bloading\s*=/i.test(updated)) {
+        updated += ' loading="lazy"';
+      }
+      if (!/\bdecoding\s*=/i.test(updated)) {
+        updated += ' decoding="async"';
+      }
+      return `<img${updated}>`;
+    });
 }
 
 export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => {
@@ -737,7 +747,10 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
                 <img
                   src={block.src}
                   alt={block.caption || 'Ілюстрація до статті'}
+                  width={1200}
+                  height={675}
                   loading="lazy"
+                  decoding="async"
                   className="w-full h-auto max-h-[720px] object-cover mx-auto transition-transform duration-300 group-hover:scale-[1.01]"
                   onError={(e) => {
                     (e.target as HTMLImageElement).alt =

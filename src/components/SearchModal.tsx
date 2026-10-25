@@ -318,10 +318,14 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                     const category = isEn && article.categoryEn ? article.categoryEn : article.category;
                     const timeAgo = formatTimeAgoOrDate(article.createdAt, article.date, article.id, lang);
 
+                    const pubUa = Boolean(article.published && article.title?.trim());
+                    const pubEn = Boolean(article.publishedEn && article.titleEn?.trim());
+                    const articleHref = `/article/${encodeURIComponent(article.id)}${isEn && pubUa && pubEn ? '?lang=en' : ''}`;
+
                     return (
                       <a
                         key={article.id}
-                        href={`/article/${encodeURIComponent(article.id)}`}
+                        href={articleHref}
                         onClick={(e) => {
                           if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.button === 0) {
                             e.preventDefault();
@@ -356,6 +360,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                             <img
                               src={article.coverImage}
                               alt=""
+                              width={160}
+                              height={112}
+                              loading="lazy"
+                              decoding="async"
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                           </div>

@@ -3,6 +3,7 @@ import path from 'path';
 import { getNeonSql, safeExecuteSql } from './_db.ts';
 import { verifyAdminToken, extractToken } from './_auth_utils.ts';
 import { initResponseHelpers, parseRequestBody } from './_helpers.ts';
+import { invalidateSitemapCache } from './_sitemap_cache.ts';
 
 export interface SocialLinksSet {
   telegram?: string;
@@ -191,6 +192,7 @@ export async function saveSocialLinks(links: any): Promise<SiteSocialLinks> {
     console.warn('Postgres sync notice: settings saved locally:', err);
   }
 
+  invalidateSitemapCache();
   return cleaned;
 }
 
@@ -201,7 +203,6 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
   try {
     if (req.method === 'OPTIONS') {
@@ -209,10 +210,12 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
       const data = await getSocialLinks();
       return res.status(200).json(data);
     }
 
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
     if (req.method === 'POST' || req.method === 'PUT') {
       const token = extractToken(req);
       if (!verifyAdminToken(token)) {

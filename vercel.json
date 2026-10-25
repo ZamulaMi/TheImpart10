@@ -2,6 +2,17 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ],
   "redirects": [
     {
       "source": "/:path*",
@@ -37,6 +48,10 @@
       "destination": "/api/news-sitemap?lang=:lang"
     },
     {
+      "source": "/uploads/cover-:id",
+      "destination": "/api/article-image?id=:id"
+    },
+    {
       "source": "/api/auth/:path*",
       "destination": "/api/auth"
     },
@@ -50,11 +65,15 @@
     },
     {
       "source": "/article/:id",
-      "destination": "/api/article-meta?id=:id"
+      "destination": "/api/render-page?pathname=/article/:id"
     },
     {
-      "source": "/((?!api/|uploads/|robots\\.txt|sitemap\\.xml|sitemap-[0-9]+\\.xml|news-sitemap\\.xml|news-sitemap-[a-zA-Z-]+\\.xml).*)",
-      "destination": "/index.html"
+      "source": "/",
+      "destination": "/api/render-page?pathname=/"
+    },
+    {
+      "source": "/:path((?!api/|assets/|uploads/|robots\\.txt|favicon\\.(?:svg|ico)|sitemap\\.xml|sitemap-[0-9]+\\.xml|news-sitemap\\.xml|news-sitemap-[a-zA-Z-]+\\.xml|.*\\.(?:js|mjs|css|map|svg|png|jpg|jpeg|webp|gif|avif|ico|woff|woff2|ttf|otf|json|webmanifest)$).*)",
+      "destination": "/api/render-page?pathname=/:path"
     }
   ]
 }

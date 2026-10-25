@@ -2,9 +2,10 @@ import { Article, SiteSocialLinks, SitePagesData, TaxonomiesData, NavigationCate
 import { getAuthHeaders } from './auth';
 import { formatErrorMessage } from '../utils/errors';
 
-export async function fetchPagesFromCloud(): Promise<SitePagesData | null> {
+export async function fetchPagesFromCloud(forceFresh = false): Promise<SitePagesData | null> {
   try {
-    const res = await fetch(`/api/pages?_t=${Date.now()}`, {
+    const url = forceFresh ? `/api/pages?_t=${Date.now()}` : '/api/pages';
+    const res = await fetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
     });
@@ -58,9 +59,10 @@ export async function savePagesToCloud(pages: SitePagesData): Promise<SitePagesD
   return pages;
 }
 
-export async function fetchSocialLinksFromCloud(): Promise<SiteSocialLinks | null> {
+export async function fetchSocialLinksFromCloud(forceFresh = false): Promise<SiteSocialLinks | null> {
   try {
-    const res = await fetch(`/api/settings?_t=${Date.now()}`, {
+    const url = forceFresh ? `/api/settings?_t=${Date.now()}` : '/api/settings';
+    const res = await fetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
     });
@@ -117,9 +119,16 @@ export async function saveSocialLinksToCloud(links: SiteSocialLinks): Promise<Si
 
 export async function fetchArticlesFromCloud(): Promise<Article[] | null> {
   try {
-    const res = await fetch(`/api/articles?_t=${Date.now()}`, {
+    const authHeaders = getAuthHeaders();
+    const hasAuth = Boolean(authHeaders.Authorization);
+    const url = hasAuth ? `/api/articles?_t=${Date.now()}` : '/api/articles';
+    const res = await fetch(url, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      cache: hasAuth ? 'no-store' : 'default',
+      headers: {
+        Accept: 'application/json',
+        ...authHeaders,
+      },
     });
     if (res.ok) {
       const data = await res.json().catch(() => null);
@@ -192,9 +201,10 @@ export async function deleteArticleFromCloud(id: string): Promise<boolean> {
   return true;
 }
 
-export async function fetchTaxonomiesFromCloud(): Promise<TaxonomiesData | null> {
+export async function fetchTaxonomiesFromCloud(forceFresh = false): Promise<TaxonomiesData | null> {
   try {
-    const res = await fetch(`/api/taxonomies?_t=${Date.now()}`, {
+    const url = forceFresh ? `/api/taxonomies?_t=${Date.now()}` : '/api/taxonomies';
+    const res = await fetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
     });
@@ -248,9 +258,10 @@ export async function saveTaxonomiesToCloud(taxonomies: TaxonomiesData): Promise
   return taxonomies;
 }
 
-export async function fetchNavCategoriesFromCloud(): Promise<NavigationCategory[] | null> {
+export async function fetchNavCategoriesFromCloud(forceFresh = false): Promise<NavigationCategory[] | null> {
   try {
-    const res = await fetch(`/api/categories?_t=${Date.now()}`, {
+    const url = forceFresh ? `/api/categories?_t=${Date.now()}` : '/api/categories';
+    const res = await fetch(url, {
       method: 'GET',
       headers: { Accept: 'application/json' },
     });

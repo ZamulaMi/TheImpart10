@@ -149,11 +149,13 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (req.method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
       const data = await getNavCategories();
       return res.status(200).json(data);
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
+      res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
       const token = extractToken(req);
       if (!verifyEditorOrAdminToken(token)) {
         return res.status(401).json({ error: 'Потрібна авторизація для оновлення категорій' });

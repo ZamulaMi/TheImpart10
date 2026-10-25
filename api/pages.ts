@@ -169,7 +169,6 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
   try {
     if (req.method === 'OPTIONS') {
@@ -177,10 +176,12 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
       const data = await getPages();
       return res.status(200).json(data);
     }
 
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
     if (req.method === 'POST' || req.method === 'PUT') {
       // Редагування сторінок доступне лише головному адміністратору
       const token = extractToken(req);

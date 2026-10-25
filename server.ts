@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import articlesHandler, { getArticles } from './api/articles';
+import articlesHandler, { getArticles, sanitizePublicArticle } from './api/articles';
 import settingsHandler, { getSocialLinks } from './api/settings';
 import authHandler, { extractToken, verifyAdminToken } from './api/auth';
 import draftsHandler, { getDrafts } from './api/drafts';
@@ -14,6 +14,8 @@ import categoriesHandler, { getNavCategories } from './api/categories';
 import statsHandler, { ensureStatsLoaded } from './api/stats';
 import { verifyEditorOrAdminToken } from './api/_auth_utils';
 import articleMetaHandler from './api/article-meta';
+import articleImageHandler from './api/article-image';
+import renderPageHandler, { generatePageResponse } from './api/render-page';
 import sitemapHandler from './api/sitemap';
 import newsSitemapHandler from './api/news-sitemap';
 
@@ -106,22 +108,21 @@ app.all([/^\/news-sitemap(?:-([a-zA-Z-]+))?\.xml$/i, '/api/news-sitemap'], async
   }
 });
 
-// Серверний рендеринг SEO-метаданих для сторінок статей (/article/:id)
-app.get(['/article/:id', '/article/:id/*'], async (req, res, next) => {
-  try {
-    await articleMetaHandler(req, res);
-  } catch (err) {
-    console.warn('Express /article/:id SEO fallback notice:', err);
-    next();
-  }
-});
-
-// Підключення API ендпоінту генерації SEO-метаданих статті
-app.all(['/api/article-meta', '/api/article-meta/*'], async (req, res) => {
+// Підключення API ендпоінту серверного рендерингу сторінок та метаданих статей
+app.all(['/api/article-meta', '/api/article-meta/*', '/api/render-page', '/api/render-page/*'], async (req, res) => {
   try {
     await articleMetaHandler(req, res);
   } catch (err: any) {
-    res.status(500).send('SEO error: ' + (err?.message || err));
+    res.status(503).send('Service Unavailable');
+  }
+});
+
+// Підключення API ендпоінту бінарних обкладинок статей
+app.all(['/api/article-image', '/api/article-image/*'], async (req, res) => {
+  try {
+    await articleImageHandler(req, res);
+  } catch (err: any) {
+    res.status(503).send('Service Unavailable');
   }
 });
 
@@ -136,10 +137,18 @@ app.all(['/api/articles', '/api/articles/*'], async (req, res) => {
         return res.status(500).json({ error: 'Помилка збереження статті на сервері: ' + (err?.message || err) });
       }
       try {
+        const token = extractToken(req);
+        const isStaff = Boolean(token && verifyEditorOrAdminToken(token));
         const data = await getArticles();
-        return res.status(200).json(data);
+        res.setHeader('Vary', 'Authorization');
+        if (isStaff) {
+          res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+          return res.status(200).json(data);
+        }
+        res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=30, stale-while-revalidate=60');
+        return res.status(200).json(data.map(sanitizePublicArticle).filter(Boolean));
       } catch {
-        return res.status(200).json([]);
+        return res.status(503).json({ error: 'Сервіс статей тимчасово недоступний' });
       }
     }
   }
@@ -174,12 +183,20 @@ app.all(['/api/auth', '/api/auth/*'], async (req, res) => {
   }
 });
 
+// Динамічні HTTPS-обкладинки для статей із Base64 (доступні для Googlebot через /uploads/cover-:id)
+app.get('/uploads/cover-:id', async (req, res) => {
+  await articleImageHandler(req, res);
+});
+app.head('/uploads/cover-:id', async (req, res) => {
+  await articleImageHandler(req, res);
+});
+
 // Роздача завантажених файлів (зображень)
 const uploadsDir = path.resolve(__dirname, 'data/uploads');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-app.use('/uploads', express.static(uploadsDir));
+app.use('/uploads', express.static(uploadsDir, { maxAge: '7d' }));
 
 // Ендпоінт для завантаження зображень (збереження на сервері) — дозволено адміністраторам та редакторам
 app.post('/api/upload', (req, res) => {
@@ -355,17 +372,71 @@ app.use((err: any, _req: any, res: any, next: any) => {
   next();
 });
 
+function isViteOrStaticAssetRequest(pathname: string): boolean {
+  if (
+    pathname.startsWith('/@') ||
+    pathname.startsWith('/src/') ||
+    pathname.startsWith('/node_modules/') ||
+    pathname.startsWith('/assets/') ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/uploads/')
+  ) {
+    return true;
+  }
+  return /\.(?:ts|tsx|js|jsx|mjs|cjs|css|map|json|svg|png|jpg|jpeg|webp|gif|avif|ico|woff|woff2|ttf|otf|webmanifest|wasm)$/i.test(
+    pathname
+  );
+}
+
 async function start() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
-      appType: 'spa',
+      appType: 'custom',
     });
+
+    app.use(async (req, res, next) => {
+      if ((req.method !== 'GET' && req.method !== 'HEAD') || isViteOrStaticAssetRequest(req.path)) {
+        return next();
+      }
+
+      try {
+        const rawIndex = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
+        const viteTemplate = await vite.transformIndexHtml(req.originalUrl, rawIndex);
+        const rendered = await generatePageResponse(req, viteTemplate);
+        for (const [k, v] of Object.entries(rendered.headers)) {
+          res.setHeader(k, v);
+        }
+        if (req.method === 'HEAD') {
+          return res.status(rendered.status).end();
+        }
+        return res.status(rendered.status).send(rendered.html);
+      } catch (err) {
+        console.error('Dev SSR render error:', err);
+        next(err);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
-    app.use(express.static('dist'));
-    app.get('*', (_req, res) => {
-      res.sendFile('dist/index.html', { root: '.' });
+    app.use(
+      '/assets',
+      express.static(path.resolve(__dirname, 'dist/assets'), {
+        immutable: true,
+        maxAge: '365d',
+      })
+    );
+    app.use(
+      express.static(path.resolve(__dirname, 'dist'), {
+        index: false,
+        maxAge: '1h',
+      })
+    );
+    app.get('*', async (req, res) => {
+      await renderPageHandler(req, res);
+    });
+    app.head('*', async (req, res) => {
+      await renderPageHandler(req, res);
     });
   }
 

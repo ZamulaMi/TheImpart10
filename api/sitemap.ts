@@ -7,7 +7,8 @@ import {
   setCachedSitemap,
   getSitemapCacheVersion,
 } from './_sitemap_cache.ts';
-import type { Article, NavigationCategory } from '../src/types.ts';
+import type { Article, NavigationCategory, SitePagesData } from '../src/types.ts';
+import { DEFAULT_PAGES_DATA } from '../src/types.ts';
 import { DEFAULT_NAV_CATEGORIES, matchesNavCategory } from '../src/utils/categories.ts';
 import {
   SITE_DOMAIN,
@@ -50,6 +51,7 @@ export interface SitemapSourceData {
     about?: string;
     contacts?: string;
   };
+  staticPages?: SitePagesData;
 }
 
 export interface BuiltSitemapDocuments {
@@ -207,17 +209,21 @@ export async function fetchArticlesStrict(): Promise<Article[]> {
             id,
             title,
             excerpt,
+            show_excerpt_in_article AS "showExcerptInArticle",
             content,
             category,
             categories,
             topics,
             author,
+            cover_image AS "coverImage",
             date,
+            read_time AS "readTime",
             created_at AS "createdAt",
             updated_at AS "updatedAt",
             published,
             title_en AS "titleEn",
             excerpt_en AS "excerptEn",
+            show_excerpt_in_article_en AS "showExcerptInArticleEn",
             content_en AS "contentEn",
             category_en AS "categoryEn",
             categories_en AS "categoriesEn",
@@ -232,6 +238,10 @@ export async function fetchArticlesStrict(): Promise<Article[]> {
         id: String(r.id),
         title: String(r.title || ''),
         excerpt: String(r.excerpt || ''),
+        showExcerptInArticle:
+          r.showExcerptInArticle !== null && r.showExcerptInArticle !== undefined
+            ? r.showExcerptInArticle === true || String(r.showExcerptInArticle) === 'true' || r.showExcerptInArticle === 1
+            : true,
         content: String(r.content || ''),
         category: String(r.category || 'Загальне'),
         categories:
@@ -239,12 +249,18 @@ export async function fetchArticlesStrict(): Promise<Article[]> {
           (r.category ? String(r.category).split(',').map((s) => s.trim()).filter(Boolean) : ['Загальне']),
         topics: parseJsonArray(r.topics) || [],
         author: String(r.author || 'Редакція The Impart'),
+        coverImage: r.coverImage ? String(r.coverImage) : undefined,
         date: String(r.date || ''),
+        readTime: r.readTime ? String(r.readTime) : undefined,
         createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : undefined,
         updatedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : undefined,
         published: r.published === true || String(r.published) === 'true' || r.published === 1,
         titleEn: r.titleEn ? String(r.titleEn) : undefined,
         excerptEn: r.excerptEn ? String(r.excerptEn) : undefined,
+        showExcerptInArticleEn:
+          r.showExcerptInArticleEn !== null && r.showExcerptInArticleEn !== undefined
+            ? r.showExcerptInArticleEn === true || String(r.showExcerptInArticleEn) === 'true' || r.showExcerptInArticleEn === 1
+            : undefined,
         contentEn: r.contentEn ? String(r.contentEn) : undefined,
         categoryEn: r.categoryEn ? String(r.categoryEn) : undefined,
         categoriesEn:
@@ -291,6 +307,10 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
 
     let categories: NavigationCategory[] = [...DEFAULT_NAV_CATEGORIES];
     let pagesUpdatedAt: { about?: string; contacts?: string } = {};
+    let staticPages: SitePagesData = {
+      about: { ...DEFAULT_PAGES_DATA.about },
+      contacts: { ...DEFAULT_PAGES_DATA.contacts },
+    };
 
     try {
       const settingRows = await executeStrictSql<any[]>(sql, async (client) => {
@@ -309,6 +329,12 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
           }
         } else if (row.key === 'static_pages' && row.value) {
           const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+          if (parsed && typeof parsed === 'object') {
+            staticPages = {
+              about: { ...DEFAULT_PAGES_DATA.about, ...(parsed.about || {}) },
+              contacts: { ...DEFAULT_PAGES_DATA.contacts, ...(parsed.contacts || {}) },
+            };
+          }
           pagesUpdatedAt = {
             about: toValidIso8601(parsed?.about?.updatedAt || (row.updatedAt ? new Date(row.updatedAt).toISOString() : undefined)),
             contacts: toValidIso8601(parsed?.contacts?.updatedAt || (row.updatedAt ? new Date(row.updatedAt).toISOString() : undefined)),
@@ -326,6 +352,7 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
       articles,
       categories,
       pagesUpdatedAt,
+      staticPages,
     };
   }
 
@@ -337,6 +364,10 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
       : [...DEFAULT_NAV_CATEGORIES];
 
   const localPagesRaw = readJsonFileStrict<any>(pagesPaths, 'pages');
+  const staticPages: SitePagesData = {
+    about: { ...DEFAULT_PAGES_DATA.about, ...(localPagesRaw?.about || {}) },
+    contacts: { ...DEFAULT_PAGES_DATA.contacts, ...(localPagesRaw?.contacts || {}) },
+  };
   const pagesUpdatedAt = {
     about: toValidIso8601(localPagesRaw?.about?.updatedAt),
     contacts: toValidIso8601(localPagesRaw?.contacts?.updatedAt),
@@ -346,6 +377,7 @@ export async function fetchSitemapSourceData(): Promise<SitemapSourceData> {
     articles,
     categories,
     pagesUpdatedAt,
+    staticPages,
   };
 }
 

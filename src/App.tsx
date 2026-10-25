@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, X, Menu, ChevronRight, ChevronDown, Sparkles, Eye } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import { Search, X, Menu, ChevronDown, Sparkles, Eye } from 'lucide-react';
 import {
   Article,
   SiteLanguage,
@@ -18,15 +18,22 @@ import {
   SiteTheme,
 } from './types';
 import { ThemeToggle } from './components/ThemeToggle';
-import { AdminPanel } from './components/AdminPanel';
-import { AdminLogin } from './components/AdminLogin';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ArticleView } from './components/ArticleView';
 import { StaticPageView } from './components/StaticPageView';
 import { SearchModal } from './components/SearchModal';
 import { RubricsModal } from './components/RubricsModal';
-import { PopularArticlesView } from './components/PopularArticlesView';
 import { formatTimeAgoOrDate, sortArticlesChronologically } from './utils/date';
+
+const AdminPanel = lazy(() =>
+  import('./components/AdminPanel').then((m) => ({ default: m.AdminPanel }))
+);
+const AdminLogin = lazy(() =>
+  import('./components/AdminLogin').then((m) => ({ default: m.AdminLogin }))
+);
+const PopularArticlesView = lazy(() =>
+  import('./components/PopularArticlesView').then((m) => ({ default: m.PopularArticlesView }))
+);
 import { getStoredTaxonomies, saveStoredTaxonomies } from './utils/taxonomies';
 import {
   DEFAULT_NAV_CATEGORIES,
@@ -74,8 +81,23 @@ import {
   approveDraftOnCloud,
   rejectDraftOnCloud,
 } from './services/drafts';
-import { fetchArticleViewsMap } from './services/stats';
-import { SEED_ARTICLES } from './data/seedArticles';
+
+interface ServerInitialPublicData {
+  articles?: Article[];
+  navCategories?: NavigationCategory[];
+  staticPages?: SitePagesData;
+  socialLinks?: SiteSocialLinks;
+  taxonomies?: TaxonomiesData;
+}
+
+function getServerInitialPublicData(): ServerInitialPublicData | null {
+  if (typeof window === 'undefined') return null;
+  const raw = (window as any).__INITIAL_PUBLIC_DATA__;
+  if (raw && typeof raw === 'object') {
+    return raw as ServerInitialPublicData;
+  }
+  return null;
+}
 
 const STORAGE_KEY = 'the_impart_articles_v1';
 const LANG_STORAGE_KEY = 'the_impart_lang_v1';
@@ -233,12 +255,18 @@ export function ArticleCard({
       ? 'text-base sm:text-lg md:text-xl lg:text-2xl line-clamp-3'
       : 'text-base sm:text-lg lg:text-xl line-clamp-3';
 
+  const pubUa = Boolean(article.published && article.title?.trim());
+  const pubEn = Boolean(article.publishedEn && article.titleEn?.trim());
+  const cardHref = `/article/${encodeURIComponent(article.id)}${isEn && pubUa && pubEn ? '?lang=en' : ''}`;
+  const imgWidth = aspectRatio === '3/4' ? 900 : 1200;
+  const imgHeight = aspectRatio === '26/10.5' ? 485 : aspectRatio === '16/9' ? 675 : 1200;
+
   return (
     <a
       id={`article-card-${article.id}`}
-      href={`/article/${encodeURIComponent(article.id)}`}
+      href={cardHref}
       onClick={(e) => {
-        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.button === 0) {
+        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && !e.button) {
           e.preventDefault();
           onSelect(article.id);
         }
@@ -250,6 +278,11 @@ export function ArticleCard({
         <img
           src={article.coverImage}
           alt={title}
+          width={imgWidth}
+          height={imgHeight}
+          loading={isHero ? 'eager' : 'lazy'}
+          fetchPriority={isHero ? 'high' : 'auto'}
+          decoding={isHero ? 'sync' : 'async'}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
         />
       ) : (
@@ -306,8 +339,10 @@ export function ArticleCard({
   );
 }
 
+type ClientAppRoute = 'main' | 'admin' | 'login' | 'about' | 'contacts' | 'notfound';
+
 function parseRouteFromUrl(): {
-  route: 'main' | 'admin' | 'login' | 'about' | 'contacts';
+  route: ClientAppRoute;
   section: HeaderSection | null;
   articleId: string | null;
   searchQuery: string | null;
@@ -341,17 +376,24 @@ function parseRouteFromUrl(): {
   }
 
   // 3. Статичні сторінки: /about, #about, /contacts, #contacts
-  if (path === '/about' || path.startsWith('/about/') || hash === '#about' || params.get('page') === 'about') {
+  if (path === '/about' || hash === '#about' || params.get('page') === 'about') {
     return { route: 'about', section: null, articleId: null, searchQuery: null, page: 1 };
   }
-  if (path === '/contacts' || path.startsWith('/contacts/') || hash === '#contacts' || params.get('page') === 'contacts') {
+  if (path === '/contacts' || hash === '#contacts' || params.get('page') === 'contacts') {
     return { route: 'contacts', section: null, articleId: null, searchQuery: null, page: 1 };
   }
 
   // 4. Пряме посилання на статтю: /article/:id або зворотна сумісність: ?article=:id або #article-:id
+  if (path === '/article') {
+    return { route: 'notfound', section: null, articleId: null, searchQuery: null, page: 1 };
+  }
+
   let articleId: string | null = null;
-  const articleMatch = rawPath.match(/^\/article\/(.+)$/i);
-  if (articleMatch) {
+  const articleMatch = rawPath.match(/^\/article\/([^/]+)$/i);
+  if (path.startsWith('/article/')) {
+    if (!articleMatch) {
+      return { route: 'notfound', section: null, articleId: null, searchQuery: null, page: 1 };
+    }
     articleId = decodeURIComponent(articleMatch[1]);
   } else if (params.get('article')) {
     articleId = params.get('article');
@@ -363,38 +405,43 @@ function parseRouteFromUrl(): {
     return { route: 'main', section: null, articleId, searchQuery: null, page: 1 };
   }
 
-  // 5. Розділи: /news, /popular, /articles, /reviews, /category/:slug або ?section=...
-  let section: HeaderSection | null = null;
-  const categoryMatch = rawPath.match(/^\/category\/(.+)$/i);
-  if (categoryMatch) {
-    section = decodeURIComponent(categoryMatch[1]);
-  } else if (path === '/popular' || params.get('section') === 'popular') {
-    section = 'popular';
-  } else if (path === '/news' || params.get('section') === 'news') {
-    section = 'news';
-  } else if (path === '/articles' || params.get('section') === 'articles') {
-    section = 'articles';
-  } else if (path === '/reviews' || params.get('section') === 'reviews') {
-    section = 'reviews';
-  } else if (params.get('category')) {
-    section = params.get('category');
-  } else if (params.get('section')) {
-    section = params.get('section');
-  } else if (path !== '/' && !path.startsWith('/search')) {
-    const singleSegment = path.replace(/^\//, '');
-    if (singleSegment && !singleSegment.includes('/')) {
-      section = singleSegment;
-    }
-  }
-
-  // 6. Пошук: /search/:query, /search?q=... або ?search=... або ?q=...
+  // 5. Пошук: /search/:query, /search?q=... або ?search=... або ?q=...
   let searchQuery: string | null = null;
   const searchMatch = rawPath.match(/^\/search\/(.+)$/i);
   if (searchMatch) {
     searchQuery = decodeURIComponent(searchMatch[1]);
-  } else if (path === '/search' || params.has('search') || params.has('q')) {
+  } else if (path === '/search' || (path === '/' && (params.has('search') || params.has('q')))) {
     const q = params.get('q') || params.get('search');
     if (q && q.trim()) searchQuery = q.trim();
+  }
+
+  // 6. Розділи: /news, /popular, /articles, /reviews, /category/:slug або ?section=...
+  let section: HeaderSection | null = null;
+  const categoryMatch = rawPath.match(/^\/category\/([^/]+)$/i);
+  if (path.startsWith('/category/')) {
+    if (!categoryMatch) {
+      return { route: 'notfound', section: null, articleId: null, searchQuery: null, page: 1 };
+    }
+    section = decodeURIComponent(categoryMatch[1]);
+  } else if (path === '/popular' || (path === '/' && params.get('section') === 'popular')) {
+    section = 'popular';
+  } else if (path === '/news' || (path === '/' && params.get('section') === 'news')) {
+    section = 'news';
+  } else if (path === '/articles' || (path === '/' && params.get('section') === 'articles')) {
+    section = 'articles';
+  } else if (path === '/reviews' || (path === '/' && params.get('section') === 'reviews')) {
+    section = 'reviews';
+  } else if (path === '/' && params.get('category')) {
+    section = params.get('category');
+  } else if (path === '/' && params.get('section')) {
+    section = params.get('section');
+  } else if (path !== '/' && path !== '/search' && !searchMatch) {
+    const singleSegment = rawPath.replace(/^\//, '');
+    if (singleSegment && !singleSegment.includes('/')) {
+      section = decodeURIComponent(singleSegment);
+    } else {
+      return { route: 'notfound', section: null, articleId: null, searchQuery: null, page: 1 };
+    }
   }
 
   // 7. Пагінація: ?page=...
@@ -405,7 +452,7 @@ function parseRouteFromUrl(): {
 }
 
 export default function App() {
-  const [currentRoute, setCurrentRoute] = useState<'main' | 'admin' | 'login' | 'about' | 'contacts'>(() => parseRouteFromUrl().route);
+  const [currentRoute, setCurrentRoute] = useState<ClientAppRoute>(() => parseRouteFromUrl().route);
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     return Boolean(getAuthToken());
@@ -525,6 +572,10 @@ export default function App() {
   };
 
   const [socialLinks, setSocialLinks] = useState<SiteSocialLinks>(() => {
+    const serverData = getServerInitialPublicData();
+    if (serverData?.socialLinks && typeof serverData.socialLinks === 'object') {
+      return serverData.socialLinks;
+    }
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(SOCIAL_STORAGE_KEY);
@@ -546,7 +597,7 @@ const sanitizePageContent = (raw?: string): string => {
     )
     .replace(
       /style="([^"]*?)color:\s*(?:rgb\(\s*23\s*,\s*23\s*,\s*23\s*\)|#171717|#0a0a0a|#000000|#1f2937|#262626|black)\s*;?([^"]*?)"/gi,
-      (match, before, after) => {
+      (_match, before, after) => {
         const remaining = `${before}${after}`.trim().replace(/^;\s*/, '').replace(/;\s*;+/g, ';');
         return remaining ? `style="${remaining}"` : '';
       }
@@ -568,6 +619,13 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
 });
 
   const [staticPages, setStaticPages] = useState<SitePagesData>(() => {
+    const serverData = getServerInitialPublicData();
+    if (serverData?.staticPages && (serverData.staticPages.about || serverData.staticPages.contacts)) {
+      return sanitizeStaticPages({
+        about: { ...DEFAULT_PAGES_DATA.about, ...(serverData.staticPages.about || {}) },
+        contacts: { ...DEFAULT_PAGES_DATA.contacts, ...(serverData.staticPages.contacts || {}) },
+      });
+    }
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem(PAGES_STORAGE_KEY);
@@ -624,7 +682,13 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
   const savedArticleCardIdRef = useRef<string | null>(null);
   const prevArticleIdRef = useRef<string | null>(selectedArticleId);
 
-  const [taxonomies, setTaxonomies] = useState<TaxonomiesData>(() => getStoredTaxonomies());
+  const [taxonomies, setTaxonomies] = useState<TaxonomiesData>(() => {
+    const serverData = getServerInitialPublicData();
+    if (serverData?.taxonomies && Array.isArray(serverData.taxonomies.categories) && Array.isArray(serverData.taxonomies.topics)) {
+      return serverData.taxonomies;
+    }
+    return getStoredTaxonomies();
+  });
 
   const handleSaveTaxonomies = async (data: TaxonomiesData) => {
     setTaxonomies(data);
@@ -648,7 +712,13 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
     }
   };
 
-  const [navCategories, setNavCategories] = useState<NavigationCategory[]>(() => getStoredNavCategories());
+  const [navCategories, setNavCategories] = useState<NavigationCategory[]>(() => {
+    const serverData = getServerInitialPublicData();
+    if (Array.isArray(serverData?.navCategories) && serverData.navCategories.length > 0) {
+      return serverData.navCategories;
+    }
+    return getStoredNavCategories();
+  });
   const [isDesktopCategoriesOpen, setIsDesktopCategoriesOpen] = useState<boolean>(false);
   const desktopCategoriesRef = useRef<HTMLDivElement>(null);
 
@@ -690,6 +760,10 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
   }, [isDesktopCategoriesOpen]);
 
   const [articles, setArticles] = useState<Article[]>(() => {
+    const serverData = getServerInitialPublicData();
+    if (Array.isArray(serverData?.articles)) {
+      return sortArticlesChronologically(serverData.articles);
+    }
     try {
       const cached = localStorage.getItem(STORAGE_KEY);
       if (cached) {
@@ -703,6 +777,10 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
   });
   const [isLoading, setIsLoading] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
+      const serverData = getServerInitialPublicData();
+      if (Array.isArray(serverData?.articles) && !getAuthToken()) {
+        return false;
+      }
       const parsed = parseRouteFromUrl();
       if (parsed.articleId) {
         const hasCache = localStorage.getItem(STORAGE_KEY);
@@ -770,7 +848,6 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
   };
 
   const fetchSocialLinksFromDb = async () => {
-    // 1. Пряме завантаження з хмарної бази даних Neon (гарантовано працює у ВСІХ браузерах без проксі)
     try {
       const cloudLinks = await fetchSocialLinksFromCloud();
       if (cloudLinks && typeof cloudLinks === 'object') {
@@ -780,65 +857,14 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
         } catch (e) {
           console.error(e);
         }
-        return;
       }
     } catch (e) {
-      console.warn('Neon direct fetch notice:', e);
-    }
-
-    // 2. Резервне завантаження через /api/settings
-    try {
-      const res = await fetch(`/api/settings?_t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { Accept: 'application/json' },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data && typeof data === 'object') {
-          setSocialLinks(data);
-          try {
-            localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(data));
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('Settings endpoint unavailable, keeping existing:', err);
+      console.warn('Social links fetch notice:', e);
     }
   };
 
   const handleSaveSocialLinks = async (links: SiteSocialLinks) => {
-    let savedSuccessfully = false;
-
-    // 1. Зберігаємо безпосередньо у хмарній базі даних Neon (обходить будь-які блокування проксі)
-    try {
-      await saveSocialLinksToCloud(links);
-      savedSuccessfully = true;
-    } catch (cloudErr) {
-      console.warn('Direct cloud save error, falling back to server route:', cloudErr);
-    }
-
-    // 2. Додатковий фоновий бекап на локальний сервер
-    try {
-      await fetch(`/api/settings?_t=${Date.now()}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          ...getAuthHeaders(),
-        },
-        body: JSON.stringify(links),
-      });
-      savedSuccessfully = true;
-    } catch (serverErr) {
-      // Якщо проксі Cloud Run видає 500, але Neon зберіг — помилку користувачу не показуємо
-    }
-
-    if (!savedSuccessfully) {
-      throw new Error('Не вдалося зберегти дані на сервері або в базі даних. Перевірте з\'єднання.');
-    }
-
+    await saveSocialLinksToCloud(links);
     setSocialLinks(links);
     try {
       localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(links));
@@ -877,51 +903,27 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
     setIsLoading(true);
     let loaded = false;
 
-    // 1. Пряме завантаження статей із хмарної бази Neon
     try {
       const cloudArticles = await fetchArticlesFromCloud();
       if (Array.isArray(cloudArticles)) {
         const sanitized = sanitizeArticleList(cloudArticles);
         const sorted = sortArticlesChronologically(sanitized);
         setArticles(sorted);
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-        } catch (e) {
-          console.error(e);
+        if (!getAuthToken()) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
+          } catch (e) {
+            console.error(e);
+          }
         }
         loaded = true;
         setIsLoading(false);
         return;
       }
     } catch (e) {
-      console.warn('Neon direct articles fetch notice:', e);
+      console.warn('Articles fetch notice:', e);
     }
 
-    // 2. Резервне завантаження через /api/articles
-    try {
-      const res = await fetch(`/api/articles?_t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: { Accept: 'application/json' },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const sanitized = sanitizeArticleList(data);
-          const sorted = sortArticlesChronologically(sanitized);
-          setArticles(sorted);
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(sorted));
-          } catch (e) {
-            console.error(e);
-          }
-          loaded = true;
-        }
-      }
-    } catch (err) {
-      console.warn('Backend unavailable, checking local storage:', err);
-    }
-
-    // 3. Якщо сервер недоступний — підтягуємо локальний кеш або початкові матеріали редакції
     if (!loaded) {
       try {
         const cached = localStorage.getItem(STORAGE_KEY);
@@ -946,36 +948,6 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
     setIsLoading(false);
   };
 
-  const refreshArticleViews = async () => {
-    try {
-      const viewsMap = await fetchArticleViewsMap();
-      if (viewsMap && typeof viewsMap === 'object') {
-        setArticles((prev) => {
-          let hasDiff = false;
-          const next = prev.map((art) => {
-            const serverV = typeof viewsMap[art.id] === 'number' ? viewsMap[art.id] : 0;
-            const currentV = art.views ?? 0;
-            const finalV = Math.max(serverV, currentV);
-            if (finalV !== currentV) {
-              hasDiff = true;
-            }
-            return {
-              ...art,
-              views: finalV,
-            };
-          });
-          if (hasDiff) {
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-            } catch {}
-            return next;
-          }
-          return prev;
-        });
-      }
-    } catch {}
-  };
-
   const handleArticleViewsUpdated = (articleId: string, updatedViews: number) => {
     setArticles((prev) => {
       let changed = false;
@@ -990,25 +962,43 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
         return art;
       });
       if (changed) {
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        } catch {}
+        if (!getAuthToken()) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          } catch {}
+        }
         return next;
       }
       return prev;
     });
   };
 
-  // Завантаження статей, налаштувань, статичних сторінок та таксономій із бази даних
+  // Завантаження даних: якщо сервер вже передав публічні дані через __INITIAL_PUBLIC_DATA__ для анонімного відвідувача —
+  // уникаємо повторного каскаду запитів до БД при першому рендері
   useEffect(() => {
-    fetchArticlesFromDb().then(() => {
-      refreshArticleViews();
-    });
-    fetchSocialLinksFromDb();
-    fetchPagesFromDb();
-    fetchTaxonomiesFromDb();
-    fetchNavCategoriesFromDb();
+    const serverData = getServerInitialPublicData();
+    const hasStaffAuth = Boolean(getAuthToken());
+
+    if (!serverData || hasStaffAuth) {
+      fetchArticlesFromDb();
+    } else if (Array.isArray(serverData.articles)) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(sortArticlesChronologically(serverData.articles)));
+      } catch {}
+    }
+
+    if (!serverData?.socialLinks) fetchSocialLinksFromDb();
+    if (!serverData?.staticPages) fetchPagesFromDb();
+    if (!serverData?.taxonomies) fetchTaxonomiesFromDb();
+    if (!serverData?.navCategories) fetchNavCategoriesFromDb();
   }, []);
+
+  // Після входу редактора або адміністратора підвантажуємо повний перелік статей разом із чернетками
+  useEffect(() => {
+    if (isAdminAuthenticated) {
+      fetchArticlesFromDb();
+    }
+  }, [isAdminAuthenticated]);
 
   // Синхронізація з навігацією браузера (URL, popstate, hashchange)
   useEffect(() => {
@@ -1030,7 +1020,7 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
         return;
       }
 
-      if (parsed.route === 'about' || parsed.route === 'contacts') {
+      if (parsed.route === 'about' || parsed.route === 'contacts' || parsed.route === 'notfound') {
         setCurrentRoute(parsed.route);
         setSelectedArticleId(null);
         setActiveSearchFilter(null);
@@ -1444,6 +1434,18 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
   };
   const selectedArticle = rawSelectedArticle && isArticlePubliclyVisible(rawSelectedArticle) ? rawSelectedArticle : null;
 
+  const isKnownCategorySection = useMemo(() => {
+    if (!activeCategorySection) return true;
+    const normalized = String(activeCategorySection).trim().toLowerCase();
+    if (['popular', 'news', 'articles', 'reviews'].includes(normalized)) return true;
+    return navCategories.some(
+      (c) => c.slug.trim().toLowerCase() === normalized || c.id.trim().toLowerCase() === normalized
+    );
+  }, [activeCategorySection, navCategories]);
+
+  const isNotFoundRoute =
+    currentRoute === 'notfound' || Boolean(activeCategorySection && !isKnownCategorySection && !isLoading);
+
   // Управління унікальними SEO-метаданими для всіх розділів сайту (крім сторінки статті, яка оновлюється в ArticleView)
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -1451,14 +1453,17 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
     // Якщо зараз відкрита стаття — її метадані оновлює компонент ArticleView
     if (selectedArticle) return;
 
-    // 1. Стан 404 (матеріал не знайдено або неопублікований)
-    if (selectedArticleId && !isLoading && !selectedArticle) {
+    // 1. Стан 404 (матеріал або маршрут не знайдено, або стаття є неопублікованою чернеткою)
+    if ((selectedArticleId && !isLoading && !selectedArticle) || isNotFoundRoute) {
       updateDocumentSeo({
-        title: siteLang === 'en' ? `Material not found — ${SITE_NAME}` : `Матеріал не знайдено — ${SITE_NAME}`,
-        description: siteLang === 'en' ? 'The requested material was not found.' : 'Запитуваний матеріал не знайдено або він є приватною чернеткою.',
+        title: siteLang === 'en' ? `Page not found — ${SITE_NAME}` : `Сторінку не знайдено — ${SITE_NAME}`,
+        description: siteLang === 'en'
+          ? 'The requested page or article was not found.'
+          : 'Запитувану сторінку або статтю не знайдено, або матеріал є приватною чернеткою.',
         canonicalUrl: SITE_DOMAIN,
         noindex: true,
         lang: siteLang,
+        jsonLd: null,
       });
       return;
     }
@@ -1587,28 +1592,19 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
     activeCategorySection,
     activeSearchFilter,
     navCategories,
+    isNotFoundRoute,
   ]);
+
+  const adminSuspenseFallback = (
+    <div className="min-h-screen flex items-center justify-center bg-white text-black">
+      <div className="w-6 h-6 border-2 border-neutral-300 border-t-black rounded-full animate-spin" />
+    </div>
+  );
 
   // Окрема сторінка входу: /login
   if (currentRoute === 'login') {
     return (
-      <AdminLogin
-        onLoginSuccess={() => {
-          setIsAdminAuthenticated(true);
-          refreshUserData();
-          fetchDrafts();
-          window.history.pushState(null, '', '/admin');
-          setCurrentRoute('admin');
-        }}
-        onBackToSite={() => navigateTo('main')}
-      />
-    );
-  }
-
-  // Режим адмін-панелі або панелі редактора: /admin
-  if (currentRoute === 'admin') {
-    if (!isAdminAuthenticated) {
-      return (
+      <Suspense fallback={adminSuspenseFallback}>
         <AdminLogin
           onLoginSuccess={() => {
             setIsAdminAuthenticated(true);
@@ -1619,39 +1615,61 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
           }}
           onBackToSite={() => navigateTo('main')}
         />
+      </Suspense>
+    );
+  }
+
+  // Режим адмін-панелі або панелі редактора: /admin
+  if (currentRoute === 'admin') {
+    if (!isAdminAuthenticated) {
+      return (
+        <Suspense fallback={adminSuspenseFallback}>
+          <AdminLogin
+            onLoginSuccess={() => {
+              setIsAdminAuthenticated(true);
+              refreshUserData();
+              fetchDrafts();
+              window.history.pushState(null, '', '/admin');
+              setCurrentRoute('admin');
+            }}
+            onBackToSite={() => navigateTo('main')}
+          />
+        </Suspense>
       );
     }
 
     return (
       <ErrorBoundary fallbackTitle="Помилка панелі керування">
-        <AdminPanel
-          articles={articles}
-          onSaveArticle={handleSaveArticle}
-          onDeleteArticle={handleDeleteArticle}
-          onExitAdmin={() => navigateTo('main')}
-          onLogout={handleAdminLogout}
-          onViewArticleOnSite={(id) => navigateTo('main', id)}
-          socialLinks={socialLinks}
-          onSaveSocialLinks={handleSaveSocialLinks}
-          onRefreshSocialLinks={fetchSocialLinksFromDb}
-          pages={staticPages}
-          onSavePages={handleSaveStaticPages}
-          onViewPageOnSite={(slug) => navigateToPage(slug)}
-          taxonomies={taxonomies}
-          onSaveTaxonomies={handleSaveTaxonomies}
-          navCategories={navCategories}
-          onSaveNavCategories={handleSaveNavCategories}
-          onViewCategoryOnSite={(slug) => handleSelectSection(slug)}
-          userRole={userRole}
-          userDisplayName={userDisplayName}
-          username={username}
-          drafts={drafts}
-          onSaveDraft={handleSaveDraft}
-          onApproveDraft={handleApproveDraft}
-          onRejectDraft={handleRejectDraft}
-          onDeleteDraft={handleDeleteDraft}
-          onRefreshDrafts={fetchDrafts}
-        />
+        <Suspense fallback={adminSuspenseFallback}>
+          <AdminPanel
+            articles={articles}
+            onSaveArticle={handleSaveArticle}
+            onDeleteArticle={handleDeleteArticle}
+            onExitAdmin={() => navigateTo('main')}
+            onLogout={handleAdminLogout}
+            onViewArticleOnSite={(id) => navigateTo('main', id)}
+            socialLinks={socialLinks}
+            onSaveSocialLinks={handleSaveSocialLinks}
+            onRefreshSocialLinks={fetchSocialLinksFromDb}
+            pages={staticPages}
+            onSavePages={handleSaveStaticPages}
+            onViewPageOnSite={(slug) => navigateToPage(slug)}
+            taxonomies={taxonomies}
+            onSaveTaxonomies={handleSaveTaxonomies}
+            navCategories={navCategories}
+            onSaveNavCategories={handleSaveNavCategories}
+            onViewCategoryOnSite={(slug) => handleSelectSection(slug)}
+            userRole={userRole}
+            userDisplayName={userDisplayName}
+            username={username}
+            drafts={drafts}
+            onSaveDraft={handleSaveDraft}
+            onApproveDraft={handleApproveDraft}
+            onRejectDraft={handleRejectDraft}
+            onDeleteDraft={handleDeleteDraft}
+            onRefreshDrafts={fetchDrafts}
+          />
+        </Suspense>
       </ErrorBoundary>
     );
   }
@@ -1953,6 +1971,24 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
                 </div>
               )}
             </div>
+          ) : isNotFoundRoute ? (
+            <div className="w-[92%] sm:w-[90%] md:max-w-3xl mx-auto py-16 sm:py-24 text-center space-y-4">
+              <h1 className="font-serif italic text-lg sm:text-xl text-neutral-500 dark:text-[#888888]">
+                {siteLang === 'en' ? 'Page not found.' : 'Сторінку не знайдено.'}
+              </h1>
+              <a
+                href="/"
+                onClick={(e) => {
+                  if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && !e.button) {
+                    e.preventDefault();
+                    navigateTo('main');
+                  }
+                }}
+                className="inline-block text-xs uppercase tracking-wider text-black dark:text-[#ffffff] underline underline-offset-4 cursor-pointer no-underline"
+              >
+                {siteLang === 'en' ? 'Return to all materials' : 'Повернутися до всіх матеріалів'}
+              </a>
+            </div>
           ) : currentRoute === 'about' || currentRoute === 'contacts' ? (
             <StaticPageView
               page={staticPages[currentRoute]}
@@ -2208,15 +2244,23 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
               })()}
             </div>
           ) : activeCategorySection === 'popular' ? (
-            <PopularArticlesView
-              articles={basePublishedArticles}
-              siteLang={siteLang}
-              taxonomies={taxonomies}
-              onSelectArticle={handleSelectArticle}
-              onSelectCategory={handleSelectCategoryFromArticle}
-              onSelectTopic={handleSelectTopicFromArticle}
-              onBackToMain={() => handleSelectSection(null)}
-            />
+            <Suspense
+              fallback={
+                <div className="py-24 text-center">
+                  <div className="inline-block w-5 h-5 border-2 border-neutral-300 dark:border-neutral-700 border-t-black dark:border-t-white rounded-full animate-spin" />
+                </div>
+              }
+            >
+              <PopularArticlesView
+                articles={basePublishedArticles}
+                siteLang={siteLang}
+                taxonomies={taxonomies}
+                onSelectArticle={handleSelectArticle}
+                onSelectCategory={handleSelectCategoryFromArticle}
+                onSelectTopic={handleSelectTopicFromArticle}
+                onBackToMain={() => handleSelectSection(null)}
+              />
+            </Suspense>
           ) : activeCategorySection ? (
             /* Сторінка обраної рубрики (Новини / Статті / Огляди) */
             <div

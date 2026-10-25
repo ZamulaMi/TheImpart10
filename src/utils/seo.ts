@@ -166,7 +166,17 @@ export function getArticleStructuredImageUrl(article: Article): string | undefin
     return undefined;
   }
   const clean = article.coverImage.trim();
-  if (!clean || clean.startsWith('data:') || clean.startsWith('blob:')) {
+  if (!clean || clean.startsWith('blob:')) {
+    return undefined;
+  }
+
+  if (clean.startsWith('data:image/')) {
+    const cleanId = String(article.id || '').trim();
+    if (!cleanId) return undefined;
+    return `${SITE_DOMAIN}/uploads/cover-${encodeURIComponent(cleanId)}`;
+  }
+
+  if (clean.startsWith('data:')) {
     return undefined;
   }
 

@@ -5,7 +5,12 @@ import { verifyAdminToken, verifyEditorOrAdminToken, extractToken } from './_aut
 import { SEED_ARTICLES } from '../src/data/seedArticles.ts';
 import { initResponseHelpers, parseRequestBody } from './_helpers.ts';
 import { getTotalViews, ensureStatsLoaded } from './stats.ts';
-import { hasSubstantiveArticleChanges, toValidIso8601 } from '../src/utils/seo.ts';
+import {
+  hasSubstantiveArticleChanges,
+  toValidIso8601,
+  hasPublishedUkrainianVersion,
+  hasPublishedEnglishVersion,
+} from '../src/utils/seo.ts';
 import { invalidateSitemapCache } from './_sitemap_cache.ts';
 
 export { getNeonSql, cleanConnectionString };
@@ -590,6 +595,52 @@ export async function deleteArticle(id: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Очищує статтю для публічної видачі анонімним користувачам та пошуковим роботам:
+ * - приховує чернетки, де не опублікована жодна мовна версія;
+ * - видаляє поля неопублікованого перекладу;
+ * - замінює великі inline data:image/* обкладинки на кешований публічний маршрут /uploads/cover-:id.
+ */
+export function sanitizePublicArticle(article: Article): Article | null {
+  const pubUa = hasPublishedUkrainianVersion(article);
+  const pubEn = hasPublishedEnglishVersion(article);
+
+  if (!pubUa && !pubEn) {
+    return null;
+  }
+
+  let normalizedCover = article.coverImage;
+  if (typeof normalizedCover === 'string' && normalizedCover.trim().startsWith('data:image/')) {
+    normalizedCover = `/uploads/cover-${encodeURIComponent(String(article.id).trim())}`;
+  }
+
+  const sanitized: Article = {
+    ...article,
+    coverImage: normalizedCover,
+    published: pubUa,
+    publishedEn: pubEn,
+  };
+
+  if (!pubUa) {
+    sanitized.title = '';
+    sanitized.excerpt = '';
+    sanitized.content = '';
+    sanitized.showExcerptInArticle = false;
+  }
+
+  if (!pubEn) {
+    delete sanitized.titleEn;
+    delete sanitized.excerptEn;
+    delete sanitized.showExcerptInArticleEn;
+    delete sanitized.contentEn;
+    delete sanitized.categoryEn;
+    delete sanitized.categoriesEn;
+    delete sanitized.topicsEn;
+  }
+
+  return sanitized;
+}
+
 export default async function handler(req: any, res: any) {
   initResponseHelpers(res);
 
@@ -603,8 +654,21 @@ export default async function handler(req: any, res: any) {
 
   try {
     if (req.method === 'GET') {
+      res.setHeader('Vary', 'Authorization');
+      const token = extractToken(req);
+      const isAuthorizedStaff = Boolean(token && verifyEditorOrAdminToken(token));
       const articles = await getArticles();
-      return res.status(200).json(articles);
+
+      if (isAuthorizedStaff) {
+        res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+        return res.status(200).json(articles);
+      }
+
+      res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=30, stale-while-revalidate=60');
+      const publicArticles = articles
+        .map(sanitizePublicArticle)
+        .filter((item): item is Article => item !== null);
+      return res.status(200).json(publicArticles);
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
