@@ -14,6 +14,7 @@ import categoriesHandler, { getNavCategories } from './api/categories';
 import statsHandler, { ensureStatsLoaded } from './api/stats';
 import { verifyEditorOrAdminToken } from './api/_auth_utils';
 import articleMetaHandler from './api/article-meta';
+import sitemapHandler from './api/sitemap';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,6 +73,21 @@ app.get('/robots.txt', (_req, res) => {
   }
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   return res.send("User-agent: *\nAllow: /\n\nDisallow: /admin\nDisallow: /admin/\nDisallow: /editor\nDisallow: /editor/\nDisallow: /login\nDisallow: /login/\nDisallow: /api/\n\nSitemap: https://www.theimpart.com/sitemap.xml\nSitemap: https://www.theimpart.com/news-sitemap.xml\n");
+});
+
+// Динамічна генерація sitemap.xml (та секцій sitemap-N.xml при перевищенні лімітів одного файлу)
+app.all([/^\/sitemap(?:-(\d+))?\.xml$/i, '/api/sitemap'], async (req, res) => {
+  try {
+    await sitemapHandler(req, res);
+  } catch (err) {
+    console.error('Express /sitemap.xml error:', err);
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Retry-After', '120');
+      return res.status(503).send('Service Unavailable');
+    }
+  }
 });
 
 // Серверний рендеринг SEO-метаданих для сторінок статей (/article/:id)

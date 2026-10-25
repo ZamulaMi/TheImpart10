@@ -5,6 +5,7 @@ import { verifyEditorOrAdminToken, extractToken } from './_auth_utils.ts';
 import { initResponseHelpers, parseRequestBody } from './_helpers.ts';
 import { DEFAULT_NAV_CATEGORIES } from '../src/utils/categories.ts';
 import type { NavigationCategory } from '../src/types.ts';
+import { invalidateSitemapCache } from './_sitemap_cache.ts';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const CATEGORIES_FILE = path.join(DATA_DIR, 'categories.json');
@@ -131,6 +132,7 @@ export async function saveNavCategories(categories: NavigationCategory[]): Promi
     console.warn('Neon save notice for nav_categories (saved locally):', err);
   }
 
+  invalidateSitemapCache();
   return safeData;
 }
 

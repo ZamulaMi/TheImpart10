@@ -1568,13 +1568,13 @@ const sanitizeStaticPages = (data: SitePagesData): SitePagesData => ({
         ? `${SITE_NAME} — Knowledge space for tech and culture`
         : `${SITE_NAME} — Простір знань про технології та культуру`,
       description: siteLang === 'en' ? DEFAULT_DESCRIPTION_EN : DEFAULT_DESCRIPTION_UA,
-      canonicalUrl: SITE_DOMAIN,
+      canonicalUrl: `${SITE_DOMAIN}/`,
       ogType: 'website',
       lang: siteLang,
       alternates: [
-        { lang: 'uk', href: SITE_DOMAIN },
-        { lang: 'en', href: `${SITE_DOMAIN}?lang=en` },
-        { lang: 'x-default', href: SITE_DOMAIN },
+        { lang: 'uk', href: `${SITE_DOMAIN}/` },
+        { lang: 'en', href: `${SITE_DOMAIN}/?lang=en` },
+        { lang: 'x-default', href: `${SITE_DOMAIN}/` },
       ],
       jsonLd: buildWebSiteJsonLd(siteLang === 'en' ? 'en' : 'uk'),
     });

@@ -6,6 +6,7 @@ import { SEED_ARTICLES } from '../src/data/seedArticles.ts';
 import { initResponseHelpers, parseRequestBody } from './_helpers.ts';
 import { getTotalViews, ensureStatsLoaded } from './stats.ts';
 import { hasSubstantiveArticleChanges, toValidIso8601 } from '../src/utils/seo.ts';
+import { invalidateSitemapCache } from './_sitemap_cache.ts';
 
 export { getNeonSql, cleanConnectionString };
 
@@ -562,6 +563,7 @@ export async function saveArticle(article: Article): Promise<Article> {
     existing?.views ?? 0
   );
   fullArticle.views = preservedViews;
+  invalidateSitemapCache();
   return fullArticle;
 }
 
@@ -573,6 +575,7 @@ export async function deleteArticle(id: string): Promise<boolean> {
 
   // 2. Оновлюємо файл на диску
   writeArticlesToFile(inMemoryArticles);
+  invalidateSitemapCache();
 
   // 3. Синхронізуємо видалення з Neon
   try {

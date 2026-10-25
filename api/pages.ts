@@ -4,6 +4,7 @@ import { safeExecuteSql } from './_db.ts';
 import { verifyAdminToken, extractToken } from './_auth_utils.ts';
 import { initResponseHelpers, parseRequestBody } from './_helpers.ts';
 import { SitePagesData, DEFAULT_PAGES_DATA } from '../src/types.ts';
+import { invalidateSitemapCache } from './_sitemap_cache.ts';
 
 // Каталоги для локального збереження на сервері
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -157,6 +158,7 @@ export async function savePages(pagesInput: any): Promise<SitePagesData> {
     console.warn('Postgres sync notice: static pages saved locally:', err);
   }
 
+  invalidateSitemapCache();
   return cleaned;
 }
 

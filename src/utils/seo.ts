@@ -107,11 +107,11 @@ export function hasPublishedEnglishVersion(article: Article): boolean {
  * Перевіряє, чи опублікована основна українська версія статті
  */
 export function hasPublishedUkrainianVersion(article: Article): boolean {
-  return (
+  const isPub =
     article.published === true ||
     String(article.published) === 'true' ||
-    (article.published as unknown) === 1
-  );
+    (article.published as unknown) === 1;
+  return Boolean(isPub && article.title?.trim());
 }
 
 /**

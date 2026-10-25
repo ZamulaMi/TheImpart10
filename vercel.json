@@ -21,6 +21,14 @@
       "destination": "/robots.txt"
     },
     {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
+    {
+      "source": "/sitemap-:part.xml",
+      "destination": "/api/sitemap?part=:part"
+    },
+    {
       "source": "/api/auth/:path*",
       "destination": "/api/auth"
     },
@@ -37,7 +45,7 @@
       "destination": "/api/article-meta?id=:id"
     },
     {
-      "source": "/((?!api/|uploads/|robots\\.txt).*)",
+      "source": "/((?!api/|uploads/|robots\\.txt|sitemap\\.xml|sitemap-[0-9]+\\.xml).*)",
       "destination": "/index.html"
     }
   ]
