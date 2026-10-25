@@ -49,7 +49,15 @@
     },
     {
       "source": "/uploads/cover-:id",
-      "destination": "/api/article-image?id=:id"
+      "destination": "/api/render-page?__asset=cover&id=:id"
+    },
+    {
+      "source": "/api/article-image",
+      "destination": "/api/render-page?__asset=cover"
+    },
+    {
+      "source": "/api/article-meta",
+      "destination": "/api/render-page"
     },
     {
       "source": "/api/auth/:path*",

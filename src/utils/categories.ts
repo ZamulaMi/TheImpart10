@@ -1,4 +1,4 @@
-import { NavigationCategory, Article } from '../types';
+import type { NavigationCategory, Article } from '../types.ts';
 
 export const NAV_CATEGORIES_STORAGE_KEY = 'the_impart_nav_categories_v1';
 

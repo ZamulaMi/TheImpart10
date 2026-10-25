@@ -1,4 +1,4 @@
-import { Article } from '../types';
+import type { Article } from '../types.ts';
 
 export const SITE_NAME = 'The Impart';
 export const SITE_BRAND_COMPACT = 'TheImpart';

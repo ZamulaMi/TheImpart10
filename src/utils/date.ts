@@ -1,4 +1,4 @@
-import { SiteLanguage } from '../types';
+import type { SiteLanguage } from '../types.ts';
 
 /**
  * Форматує час публікації матеріалу відповідно до мови сайту:

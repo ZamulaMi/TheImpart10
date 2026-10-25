@@ -3,7 +3,7 @@ import path from 'path';
 import { safeExecuteSql } from './_db.ts';
 import { verifyAdminToken, extractToken } from './_auth_utils.ts';
 import { initResponseHelpers, parseRequestBody } from './_helpers.ts';
-import { SitePagesData, DEFAULT_PAGES_DATA } from '../src/types.ts';
+import { type SitePagesData, DEFAULT_PAGES_DATA } from '../src/types.ts';
 import { invalidateSitemapCache } from './_sitemap_cache.ts';
 
 // Каталоги для локального збереження на сервері

@@ -13,8 +13,7 @@ import taxonomiesHandler, { getTaxonomies } from './api/taxonomies';
 import categoriesHandler, { getNavCategories } from './api/categories';
 import statsHandler, { ensureStatsLoaded } from './api/stats';
 import { verifyEditorOrAdminToken } from './api/_auth_utils';
-import articleMetaHandler from './api/article-meta';
-import articleImageHandler from './api/article-image';
+import articleImageHandler from './api/_article_image';
 import renderPageHandler, { generatePageResponse } from './api/render-page';
 import sitemapHandler from './api/sitemap';
 import newsSitemapHandler from './api/news-sitemap';
@@ -111,7 +110,7 @@ app.all([/^\/news-sitemap(?:-([a-zA-Z-]+))?\.xml$/i, '/api/news-sitemap'], async
 // Підключення API ендпоінту серверного рендерингу сторінок та метаданих статей
 app.all(['/api/article-meta', '/api/article-meta/*', '/api/render-page', '/api/render-page/*'], async (req, res) => {
   try {
-    await articleMetaHandler(req, res);
+    await renderPageHandler(req, res);
   } catch (err: any) {
     res.status(503).send('Service Unavailable');
   }

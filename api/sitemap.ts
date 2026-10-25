@@ -61,9 +61,12 @@ export interface BuiltSitemapDocuments {
 }
 
 export class SitemapDatabaseError extends Error {
-  constructor(message: string, public readonly causeError?: unknown) {
+  readonly causeError?: unknown;
+
+  constructor(message: string, causeError?: unknown) {
     super(message);
     this.name = 'SitemapDatabaseError';
+    this.causeError = causeError;
   }
 }
 

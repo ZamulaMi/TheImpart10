@@ -1,4 +1,4 @@
-import { TaxonomiesData, CategoryItem, TopicItem } from '../types';
+import type { TaxonomiesData, CategoryItem, TopicItem } from '../types.ts';
 
 export const TAXONOMIES_STORAGE_KEY = 'the_impart_taxonomies_v1';
 

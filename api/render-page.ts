@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { initResponseHelpers } from './_helpers.ts';
 import { BUILT_HTML_SHELL } from './_built_shell.ts';
+import articleImageHandler from './_article_image.ts';
 import {
   fetchSitemapSourceData,
   SitemapDatabaseError,
@@ -629,7 +630,10 @@ function parseRequestTarget(req: any): { pathname: string; searchParams: URLSear
     pathname = cleanP.startsWith('/') ? cleanP : `/${cleanP}`;
     searchParams.delete('pathname');
   } else if (
-    (pathname === '/api/article-meta' || pathname.startsWith('/api/article-meta/')) &&
+    (pathname === '/api/article-meta' ||
+      pathname.startsWith('/api/article-meta/') ||
+      pathname === '/api/render-page' ||
+      pathname.startsWith('/api/render-page/')) &&
     (req?.query?.id || searchParams.get('id'))
   ) {
     const idVal = String(req?.query?.id || searchParams.get('id')).trim();
@@ -1257,6 +1261,16 @@ export async function generatePageResponse(
 }
 
 export default async function handler(req: any, res: any) {
+  const rawReqUrl = typeof req?.url === 'string' ? req.url : '';
+  if (
+    req?.query?.__asset === 'cover' ||
+    /^\/uploads\/cover-/i.test(rawReqUrl) ||
+    /^\/api\/article-image\b/i.test(rawReqUrl) ||
+    /[?&]__asset=cover\b/.test(rawReqUrl)
+  ) {
+    return articleImageHandler(req, res);
+  }
+
   initResponseHelpers(res);
 
   res.setHeader('Access-Control-Allow-Origin', '*');
